@@ -1,0 +1,35 @@
+#links .vnext-link-tools{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
+#links .vnext-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px}
+#links .vnext-box-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
+#links .vnext-box h4{margin:0 0 6px}
+#links .vnext-box-head p{margin:0;color:#64748b;font-size:12px;line-height:1.5}
+#links .vnext-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#links .vnext-grid label{font-size:12px;font-weight:800;color:#334155}
+#links .vnext-grid input,#links .vnext-grid select,#links .vnext-box textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;background:#fff;color:#0f172a}
+#links .vnext-grid input:focus,#links .vnext-grid select:focus{outline:2px solid rgba(37,99,235,.15);border-color:#2563eb}
+#links .vnext-grid .full{grid-column:1/-1}
+#links .vnext-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+#links .vnext-lang{display:flex;gap:5px;align-items:center}
+#links .vnext-lang button{border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:11px}
+#links .vnext-lang button.active{background:#2563eb;color:#fff;border-color:#2563eb}
+#links .vnext-count{min-width:28px;height:28px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:#e2e8f0;color:#334155;font-size:12px;font-weight:800}
+#links .vnext-result{margin-top:14px;padding:15px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px}
+#links .vnext-success{font-weight:800;margin-bottom:7px}
+#links .vnext-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;font-size:17px}
+#links .vnext-url{word-break:break-all;font-size:12px;color:#475569;margin-top:6px}
+#links .vnext-result-actions,#links .vnext-row-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#links .vnext-result-actions{margin-top:10px}
+#links .vnext-open{text-decoration:none}
+#links .vnext-copy{margin-top:0}
+#links .vnext-error{margin-top:12px;padding:12px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:9px;font-size:13px}
+#links .vnext-loading{padding:18px;text-align:center;color:#64748b}
+#links .vnext-muted{font-size:12px;color:#64748b;line-height:1.5;margin-top:10px}
+#links .vnext-table-wrap{overflow:auto}
+#links .vnext-table{width:100%;border-collapse:collapse;min-width:1100px}
+#links .vnext-table th,#links .vnext-table td{text-align:left;padding:10px;border-bottom:1px solid #eef2f7;font-size:12px;vertical-align:top}
+#links .vnext-table th{color:#64748b;font-size:11px;white-space:nowrap;background:#f8fafc}
+#links .vnext-table td strong{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+#links .vnext-mini-url{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-size:10px;margin-top:4px}
+#links .vnext-row-actions .secondary{font-size:11px;padding:6px 8px;text-decoration:none}
+@media(max-width:1100px){#links .vnext-link-tools{grid-template-columns:1fr}}
+@media(max-width:700px){#links .vnext-grid{grid-template-columns:1fr}#links .vnext-grid .full{grid-column:auto}#links .vnext-box-head{flex-direction:column}}

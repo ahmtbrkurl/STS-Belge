@@ -1,0 +1,8 @@
+{
+  "name": "STS Personnel DMS",
+  "description": "Personnel Document Management System with HR administration panel and candidate submission portal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

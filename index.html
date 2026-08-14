@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>STS Personnel Document System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div>
+        <div class="brand">STS Personnel Document System</div>
+        <div class="subtitle">Personel belge toplama ve yönetim sistemi</div>
+      </div>
+      <span class="badge">MVP</span>
+    </header>
+
+    <main class="container">
+      <section id="landing" class="card">
+        <h1>Personel Belge Yükleme</h1>
+        <p>Size verilen bağlantı üzerinden personel bilgilerinizi ve gerekli belgeleri yükleyin.</p>
+        <div class="token-box">
+          <label>Başvuru Tokenı</label>
+          <input id="tokenInput" placeholder="Örn. FORMEN-8F72K91A">
+        </div>
+        <button id="startBtn" class="primary">Başla</button>
+      </section>
+
+      <section id="formView" class="hidden"></section>
+
+      <section id="successView" class="card hidden">
+        <div class="success-icon">✓</div>
+        <h2>Kayıt tamamlandı</h2>
+        <p id="successText"></p>
+        <div class="link-card">
+          <label>Belgelerinizi daha sonra yönetmek için kişisel bağlantınız</label>
+          <input id="manageLink" readonly>
+          <button id="copyLink" class="secondary">Bağlantıyı Kopyala</button>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
