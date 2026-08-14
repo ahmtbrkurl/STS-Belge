@@ -3176,6 +3176,13 @@ if($("previewBtn")){
 // Başvuru linklerinin yönetimi links-vnext.js tarafından yapılmaktadır.
 // ============================================================
 
+function renderLinks() {
+  if (typeof window.injectLinksVNext === "function") {
+    window.injectLinksVNext();
+  }
+}
+
+
 
 // ============================================================
 // INITIALIZATION
