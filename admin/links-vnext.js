@@ -23,8 +23,12 @@
   // AYARLAR
   // ==========================================================
 
-  const API_URL =
-    "https://script.google.com/macros/s/AKfycbwPMm6sjG_viMpjyW9zhNsGfDA9PKjckV47pvMplonGOqS-FNOnDxbl47EYF67Lmk4/exec";
+  const DEFAULT_API_URL =
+    "https://script.google.com/macros/s/AKfycbxPt8aUhlSKcOYclQCQ2ZSQ3ZkLZLcSi3pw7SB6TfWkd_kB4QC_IwDGVM6W-nIvCFad/exec";
+
+  function getApiUrl() {
+    return localStorage.getItem("sts_api_url") || DEFAULT_API_URL;
+  }
 
 
   const PAGE_URL =
@@ -453,14 +457,15 @@
   // ==========================================================
 
   async function post(data) {
-    if (!API_URL) {
+    const url = getApiUrl();
+    if (!url) {
       return getLocalMockResponse(data);
     }
 
     try {
       const response =
         await fetch(
-          API_URL,
+          url,
           {
             method: "POST",
             headers: {

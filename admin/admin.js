@@ -1,4 +1,8 @@
-const API_URL="https://script.google.com/macros/s/AKfycbwPMm6sjG_viMpjyW9zhNsGfDA9PKjckV47pvMplonGOqS-FNOnDxbl47EYF67Lmk4/exec";
+const DEFAULT_API_URL="https://script.google.com/macros/s/AKfycbxPt8aUhlSKcOYclQCQ2ZSQ3ZkLZLcSi3pw7SB6TfWkd_kB4QC_IwDGVM6W-nIvCFad/exec";
+function getApiUrl(){
+  return localStorage.getItem("sts_api_url") || DEFAULT_API_URL;
+}
+const API_URL=getApiUrl();
 
 const demo={
   groups:[
@@ -40,15 +44,15 @@ const $=id=>document.getElementById(id);
 
 
 async function post(data){
-
-  if(!API_URL){
+  const url = getApiUrl();
+  if(!url){
     return getLocalMockResponse(data);
   }
 
   try {
     const response=
       await fetch(
-        API_URL,
+        url,
         {
           method:"POST",
           headers:{
@@ -696,16 +700,84 @@ function showPage(page){
   }
 
 
-  if(page==="logs"){
-
-    $("logsTable")
-      .innerHTML=
-        '<div class="empty">'+
-        'Backend bağlantısından sonra gerçek DOCUMENT_LOG kayıtları burada listelenecek.'+
-        '</div>';
-
+  if(page==="settings"){
+    renderSettings();
   }
+}
 
+
+// ============================================================
+// SETTINGS
+// ============================================================
+
+function renderSettings(){
+  const box = $("settings");
+  if(!box) return;
+  const currentUrl = getApiUrl();
+  box.innerHTML = `
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h3>Sistem & Google Apps Script Bağlantısı</h3>
+          <p>Google Apps Script Web App dağıtım URL'sini yönetin ve test edin.</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px; max-width:800px; padding:12px 0;">
+        <div>
+          <label style="display:block; font-weight:600; margin-bottom:6px;">Google Apps Script Web App URL</label>
+          <input type="text" id="settingsApiUrlInput" value="${esc(currentUrl)}" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; font-family:monospace; font-size:13px;" />
+          <small style="display:block; color:#64748b; margin-top:4px;">Google Apps Script'te "Yeni Dağıtım" oluşturduğunuzda verilen Web Uygulaması URL'si.</small>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button type="button" class="primary" id="saveApiUrlBtn">URL'yi Kaydet</button>
+          <button type="button" class="secondary" id="testApiUrlBtn">Bağlantıyı Test Et</button>
+          <button type="button" class="secondary" id="resetApiUrlBtn">Varsayılana Dön</button>
+        </div>
+        <div id="settingsApiStatus" style="padding:12px; border-radius:6px; background:#f8fafc; border:1px solid #e2e8f0; font-size:14px;">
+          <strong>Durum:</strong> <span id="statusText">Bağlantı kontrol edilmeye hazır.</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $("saveApiUrlBtn").onclick = () => {
+    const val = ($("settingsApiUrlInput").value || "").trim();
+    if(!val) {
+      alert("Lütfen geçerli bir Web App URL girin.");
+      return;
+    }
+    localStorage.setItem("sts_api_url", val);
+    alert("Web App URL başarıyla kaydedildi! Sayfa yenileniyor...");
+    location.reload();
+  };
+
+  $("resetApiUrlBtn").onclick = () => {
+    localStorage.removeItem("sts_api_url");
+    alert("Varsayılan URL'ye dönüldü. Sayfa yenileniyor...");
+    location.reload();
+  };
+
+  $("testApiUrlBtn").onclick = async () => {
+    const statusBox = $("settingsApiStatus");
+    const statusText = $("statusText");
+    statusText.innerHTML = '<span style="color:#0284c7">Bağlantı test ediliyor...</span>';
+    try {
+      const url = ($("settingsApiUrlInput").value || "").trim();
+      const res = await fetch(`${url}?action=getApplicationLinkOptions`);
+      const data = await res.json();
+      if(data && (data.success || data.ok)) {
+        statusBox.style.background = "#f0fdf4";
+        statusBox.style.borderColor = "#86efac";
+        statusText.innerHTML = '<span style="color:#16a34a; font-weight:600;">✓ Bağlantı Başarılı! Google Apps Script yanıt veriyor.</span>';
+      } else {
+        throw new Error(data.error || "Beklenmeyen yanıt formatı");
+      }
+    } catch(err) {
+      statusBox.style.background = "#fef2f2";
+      statusBox.style.borderColor = "#fca5a5";
+      statusText.innerHTML = `<span style="color:#dc2626; font-weight:600;">✗ Bağlantı Hatası: ${esc(err.message)}</span>`;
+    }
+  };
 }
 
 
@@ -1056,425 +1128,158 @@ async function loadFormsForHR(){
 // ============================================================
 
 function renderFormsCatalog(){
+  const body = $("formsCatalogBody");
+  if (!body) return;
 
-  const body=
-    $("formsCatalogBody");
-
-
-  if(!body){
-
+  if (!hrForms || !hrForms.length) {
+    body.innerHTML = '<div class="empty">Henüz kayıtlı form bulunmuyor. Sol üstteki form tasarımcısından yeni form oluşturabilirsiniz.</div>';
     return;
-
   }
 
-
-  if(!hrForms.length){
-
-    body.innerHTML=
-      '<div class="empty">'+
-      'Henüz kayıtlı form bulunmuyor.'+
-      '</div>';
-
-    return;
-
-  }
-
-
-  body.innerHTML=`
-
+  body.innerHTML = `
     <div style="overflow:auto">
-
       <table class="table">
-
         <thead>
-
           <tr>
-
-            <th>
-              Form
-            </th>
-
-            <th>
-              Grup
-            </th>
-
-            <th>
-              Versiyon
-            </th>
-
-            <th>
-              Durum
-            </th>
-
-            <th>
-              Oluşturulma
-            </th>
-
-            <th>
-              İşlem
-            </th>
-
+            <th>Form</th>
+            <th>Grup</th>
+            <th>Versiyon</th>
+            <th>Durum</th>
+            <th>Oluşturulma</th>
+            <th>İşlem</th>
           </tr>
-
         </thead>
-
         <tbody>
+          ${hrForms.map(f => {
+            const fId = f.form_id || f.id || f.groupId || f.group_id;
+            const fName = f.form_name || f.formName || (f.group_id ? groupNameById(f.group_id) + " Formu" : "Personel Formu");
+            const gId = f.group_id || f.groupId || "GRP-GENEL";
+            const isInactive = String(f.status || "").toUpperCase() === "INACTIVE" || String(f.status || "").toUpperCase() === "PASIF";
+            const active = !isInactive;
 
-          ${hrForms
-            .map(
-              f=>{
-
-                const active=
-                  String(
-                    f.status ||
-                    ""
-                  )
-                  .toUpperCase()
-                  ===
-                  "ACTIVE";
-
-
-                return `
-
-                  <tr>
-
-                    <td>
-
-                      <strong>
-                        ${esc(
-                          f.form_name
-                        )}
-                      </strong>
-
-                      <small
-                        style="
-                          display:block;
-                          color:#64748b
-                        "
-                      >
-                        ${esc(
-                          f.form_id
-                        )}
-                      </small>
-
-                    </td>
-
-
-                    <td>
-                      ${esc(
-                        groupNameById(
-                          f.group_id
-                        )
-                      )}
-                    </td>
-
-
-                    <td>
-                      ${esc(
-                        f.version ||
-                        "1.0"
-                      )}
-                    </td>
-
-
-                    <td>
-
-                      ${
-                        active
-
-                        ?
-
-                        '<span class="pill ok">Aktif</span>'
-
-                        :
-
-                        '<span class="pill warn">Pasif</span>'
-                      }
-
-                    </td>
-
-
-                    <td>
-                      ${formatAdminDate(
-                        f.created_at
-                      )}
-                    </td>
-
-
-                    <td>
-
-                      <div
-                        style="
-                          display:flex;
-                          gap:6px;
-                          flex-wrap:wrap
-                        "
-                      >
-
-                        <button
-                          type="button"
-                          class="secondary form-edit-btn"
-                          data-id="${esc(
-                            f.form_id
-                          )}"
-                        >
-                          Düzenle
-                        </button>
-
-
-                        <button
-                          type="button"
-                          class="secondary form-status-btn"
-                          data-id="${esc(
-                            f.form_id
-                          )}"
-                          data-status="${active?"ACTIVE":"INACTIVE"}"
-                        >
-                          ${
-                            active
-                              ? "Pasifleştir"
-                              : "Aktifleştir"
-                          }
-                        </button>
-
-
-                        <button
-                          type="button"
-                          class="secondary form-delete-btn"
-                          data-id="${esc(
-                            f.form_id
-                          )}"
-                          style="color:#b91c1c"
-                        >
-                          Sil
-                        </button>
-
-                      </div>
-
-                    </td>
-
-                  </tr>
-
-                `;
-
-              }
-            )
-            .join("")}
-
+            return `
+              <tr>
+                <td>
+                  <strong>${esc(fName)}</strong>
+                  <small style="display:block; color:#64748b">${esc(fId)}</small>
+                </td>
+                <td>${esc(groupNameById(gId))}</td>
+                <td>${esc(f.version || "1.0")}</td>
+                <td>
+                  ${active ? '<span class="pill ok">Aktif</span>' : '<span class="pill warn">Pasif</span>'}
+                </td>
+                <td>${formatAdminDate(f.created_at || f.createdAt || new Date())}</td>
+                <td>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap">
+                    <button type="button" class="secondary form-edit-btn" data-id="${esc(fId)}" data-group="${esc(gId)}">
+                      Düzenle
+                    </button>
+                    <button type="button" class="secondary form-status-btn" data-id="${esc(fId)}" data-status="${active ? "ACTIVE" : "INACTIVE"}">
+                      ${active ? "Pasifleştir" : "Aktifleştir"}
+                    </button>
+                    <button type="button" class="secondary form-delete-btn" data-id="${esc(fId)}" data-group="${esc(gId)}" style="color:#b91c1c">
+                      Sil
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join("")}
         </tbody>
-
       </table>
-
     </div>
-
   `;
 
+  document.querySelectorAll(".form-edit-btn").forEach(b => {
+    b.onclick = () => editForm(b.dataset.id, b.dataset.group);
+  });
 
-  document
-    .querySelectorAll(
-      ".form-edit-btn"
-    )
-    .forEach(
-      b=>
-        b.onclick=
-          ()=>
-            editForm(
-              b.dataset.id
-            )
-    );
+  document.querySelectorAll(".form-status-btn").forEach(b => {
+    b.onclick = () => toggleFormStatus(b.dataset.id, b.dataset.status);
+  });
 
-
-  document
-    .querySelectorAll(
-      ".form-status-btn"
-    )
-    .forEach(
-      b=>
-        b.onclick=
-          ()=>
-            toggleFormStatus(
-              b.dataset.id,
-              b.dataset.status
-            )
-    );
-
-
-  document
-    .querySelectorAll(
-      ".form-delete-btn"
-    )
-    .forEach(
-      b=>
-        b.onclick=
-          ()=>
-            deleteForm(
-              b.dataset.id
-            )
-    );
-
+  document.querySelectorAll(".form-delete-btn").forEach(b => {
+    b.onclick = () => deleteForm(b.dataset.id, b.dataset.group);
+  });
 }
-
 
 // ============================================================
 // EDIT FORM
 // ============================================================
 
-async function editForm(formId){
+async function editForm(formId, groupId){
+  try {
+    let form = null;
+    let fields = [];
 
-  try{
-
-    const result=
-      await post({
-        action:
-          "getFormDefinitionForHR",
-
-        form_id:
-          formId
+    try {
+      const result = await post({
+        action: "getFormDefinitionForHR",
+        form_id: formId,
+        group_id: groupId
       });
+      if (result && (result.success || result.ok)) {
+        form = result.form || result.data;
+        fields = result.fields || (result.form ? result.form.fields : []) || [];
+      }
+    } catch (e) {
+      console.warn("Backend getFormDefinitionForHR hatası, yerelden aranıyor:", e);
+    }
 
+    if (!form) {
+      form = hrForms.find(f => (f.form_id === formId || f.id === formId || f.group_id === groupId || f.groupId === groupId));
+      if (form && form.fields) fields = form.fields;
+    }
 
-    const form=
-      result.form;
+    if (!form) {
+      const formsMap = JSON.parse(localStorage.getItem("sts_forms") || "{}");
+      form = formsMap[formId] || formsMap[groupId] || Object.values(formsMap).find(f => f.id === formId || f.form_id === formId);
+      if (form && form.fields) fields = form.fields;
+    }
 
+    if (!form) {
+      form = {
+        form_id: formId,
+        group_id: groupId || "GRP-FORMEN",
+        form_name: "Personel Formu",
+        version: "1.0"
+      };
+    }
 
-    editingFormId=
-      form.form_id;
-
+    editingFormId = form.form_id || form.id || formId;
 
     ensureFormBuilderDom();
-
-
     populateGroups();
 
+    if ($("formGroup")) $("formGroup").value = form.group_id || form.groupId || groupId || "";
+    if ($("formName")) $("formName").value = form.form_name || form.formName || "";
+    if ($("formVersion")) $("formVersion").value = form.version || "1.0";
 
-    $("formGroup")
-      .value=
-        form.group_id;
+    demo.fields = (fields || []).map((f, idx) => ({
+      id: f.id || f.field_id || ("fld_" + (idx + 1)),
+      type: f.type || "text",
+      label: f.label || defaultLabels[f.type] || "Alan",
+      code: f.code || "",
+      required: f.required === true,
+      helpText: f.helpText || "",
+      placeholder: f.placeholder || "",
+      fileTypes: Array.isArray(f.fileTypes) ? f.fileTypes : (Array.isArray(f.accept) ? f.accept : []),
+      maxMB: f.maxMB !== null && f.maxMB !== undefined && f.maxMB !== "" ? Number(f.maxMB) : 10,
+      replaceAllowed: f.replaceAllowed !== false,
+      hrApproval: f.hrApproval === true,
+      cameraAllowed: f.cameraAllowed !== false,
+      galleryAllowed: f.galleryAllowed !== false,
+      options: Array.isArray(f.options) ? f.options : []
+    }));
 
-
-    $("formName")
-      .value=
-        form.form_name ||
-        "";
-
-
-    $("formVersion")
-      .value=
-        form.version ||
-        "1.0";
-
-
-    demo.fields=
-      (result.fields || [])
-        .map(
-          f=>({
-
-            id:
-              f.id,
-
-            type:
-              f.type,
-
-            label:
-              f.label ||
-              defaultLabels[
-                f.type
-              ] ||
-              "Alan",
-
-            code:
-              f.code ||
-              "",
-
-            required:
-              f.required===true,
-
-            helpText:
-              f.helpText ||
-              "",
-
-            placeholder:
-              f.placeholder ||
-              "",
-
-            fileTypes:
-              Array.isArray(
-                f.fileTypes
-              )
-                ? f.fileTypes
-                : [],
-
-            maxMB:
-              f.maxMB===null ||
-              f.maxMB===undefined ||
-              f.maxMB===""
-
-                ?
-
-                null
-
-                :
-
-                Number(
-                  f.maxMB
-                ),
-
-            replaceAllowed:
-              f.replaceAllowed !==
-              false,
-
-            hrApproval:
-              f.hrApproval===
-              true,
-
-            cameraAllowed:
-              f.cameraAllowed !==
-              false,
-
-            galleryAllowed:
-              f.galleryAllowed !==
-              false,
-
-            options:
-              Array.isArray(
-                f.options
-              )
-                ? f.options
-                : []
-
-          })
-        );
-
-
-    selectedField=
-      demo.fields[0]?.id ||
-      null;
-
-
+    selectedField = demo.fields[0]?.id || null;
     renderBuilder();
-
     updateFormEditorMode();
 
-
-    $("forms")
-      .scrollIntoView({
-        behavior:
-          "smooth",
-
-        block:
-          "start"
-      });
-
-
-  }catch(error){
-
-    alert(
-      "Form yüklenemedi:\n"+
-      error.message
-    );
-
+    $("forms")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    alert("Form yüklenemedi:\n" + error.message);
   }
-
 }
 
 

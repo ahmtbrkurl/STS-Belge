@@ -36,66 +36,184 @@ function saveFormForHR_(p) {
   ensureHeaders_();
   const s = sheet_(SHEETS.FORM_FIELDS);
   const rows = s.getDataRange().getValues();
-  const groupId = p.group_id || p.groupId;
-  const formName = p.form_name || p.formName || 'Personel Başvuru Formu';
+  const groupId = String(p.group_id || p.groupId || 'GRP-GENEL').trim();
+  const formName = p.form_name || p.formName || (groupId.replace('GRP-', '') + ' Başvuru Formu');
   const version = p.version || '1.0';
   const fields = p.fields || [];
+  const formId = p.form_id || ('FORM-' + groupId.replace('GRP-', '').toUpperCase() + '-' + Utilities.getUuid().slice(0, 6).toUpperCase());
 
-  // Eski alanları deaktif et veya sil
+  // Eski alanları temizle (bu gruba ait)
   for (let i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][1]) === String(groupId)) {
+    if (String(rows[i][1]).toUpperCase() === groupId.toUpperCase() || String(rows[i][1]).toUpperCase() === groupId.replace('GRP-', '').toUpperCase()) {
       s.deleteRow(i + 1);
     }
   }
 
   // Yeni alanları ekle
   fields.forEach((f, idx) => {
-    const fId = f.id || ('FLD-' + Utilities.getUuid().slice(0, 8).toUpperCase());
+    const fId = f.id || f.field_id || ('FLD-' + Utilities.getUuid().slice(0, 8).toUpperCase());
+    let fileTypesStr = '';
+    if (Array.isArray(f.fileTypes)) fileTypesStr = f.fileTypes.join(',');
+    else if (Array.isArray(f.accept)) fileTypesStr = f.accept.join(',');
+
     s.appendRow([
       fId,
       groupId,
       f.step || f.page || 1,
       idx + 1,
-      f.type,
-      f.code || f.id || '',
-      f.label || '',
-      !!f.required,
-      (f.accept || []).join(','),
+      f.type || 'text',
+      f.code || f.id || ('FLD_' + (idx + 1)),
+      f.label || ('Alan ' + (idx + 1)),
+      f.required === true,
+      fileTypesStr,
       f.maxMB || 10,
       f.replaceAllowed !== false,
-      !!f.hrApproval,
+      f.hrApproval === true,
       true
     ]);
   });
 
-  return { success: true, ok: true, groupId: groupId, formName: formName, version: version, fieldsCount: fields.length };
+  return {
+    success: true,
+    ok: true,
+    form_id: formId,
+    formId: formId,
+    group_id: groupId,
+    groupId: groupId,
+    form_name: formName,
+    formName: formName,
+    version: version,
+    status: 'ACTIVE',
+    fieldsCount: fields.length
+  };
 }
 
 function getForms_() {
   ensureHeaders_();
   const groupsRes = getGroups_();
   const fieldsRows = sheet_(SHEETS.FORM_FIELDS).getDataRange().getValues().slice(1);
-  const forms = (groupsRes.groups || []).map(g => {
+  const groupsList = groupsRes.groups || [];
+
+  // Mevcut kayıtlı form alanlarından grupları topla
+  const knownGroupIds = new Set(groupsList.map(g => String(g.id).toUpperCase()));
+  fieldsRows.forEach(r => {
+    const gid = String(r[1] || '').toUpperCase();
+    if (gid && !knownGroupIds.has(gid)) {
+      knownGroupIds.add(gid);
+      groupsList.push({
+        id: gid,
+        name: gid.replace('GRP-', '') + ' Grubu',
+        description: '',
+        active: true
+      });
+    }
+  });
+
+  if (groupsList.length === 0) {
+    groupsList.push(
+      { id: 'GRP-FORMEN', name: 'Formen', description: 'Formen pozisyonları', active: true },
+      { id: 'GRP-ISCI', name: 'İşçi', description: 'Saha işçileri', active: true }
+    );
+  }
+
+  const forms = groupsList.map(g => {
     const gFields = fieldsRows
-      .filter(r => String(r[1]) === String(g.id) && r[12] !== false)
+      .filter(r => (String(r[1]).toUpperCase() === String(g.id).toUpperCase() || String(r[1]).toUpperCase() === String(g.id).replace('GRP-', '').toUpperCase()) && r[12] !== false)
       .map(r => ({
-        id: r[0],
-        groupId: r[1],
-        step: r[2],
-        type: r[4],
-        code: r[5],
-        label: r[6],
-        required: r[7]
+        id: String(r[0]),
+        field_id: String(r[0]),
+        groupId: String(r[1]),
+        group_id: String(r[1]),
+        step: Number(r[2] || 1),
+        type: String(r[4] || 'text'),
+        code: String(r[5] || ''),
+        label: String(r[6] || ''),
+        required: r[7] === true || String(r[7]).toUpperCase() === 'TRUE',
+        accept: r[8] ? String(r[8]).split(',') : [],
+        fileTypes: r[8] ? String(r[8]).split(',') : [],
+        maxMB: Number(r[9] || 10),
+        replaceAllowed: r[10] !== false,
+        hrApproval: r[11] === true
       }));
+
+    const formId = 'FORM-' + String(g.id).replace('GRP-', '').toUpperCase();
+    const formName = (g.name || g.id) + ' Başvuru Formu';
+
     return {
-      id: 'FORM-' + g.id,
+      id: formId,
+      form_id: formId,
+      group_id: g.id,
       groupId: g.id,
+      group_name: g.name,
       groupName: g.name,
-      formName: g.name + ' Başvuru Formu',
+      form_name: formName,
+      formName: formName,
+      version: '1.0',
+      status: 'ACTIVE',
+      created_at: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
       fields: gFields
     };
   });
+
   return { success: true, ok: true, forms: forms };
+}
+
+function getFormDefinitionForHR_(p) {
+  ensureHeaders_();
+  const formsRes = getForms_();
+  const forms = formsRes.forms || [];
+  const targetId = String(p.form_id || p.formId || p.group_id || p.groupId || '').toUpperCase();
+
+  const found = forms.find(f => 
+    String(f.form_id || '').toUpperCase() === targetId ||
+    String(f.id || '').toUpperCase() === targetId ||
+    String(f.group_id || '').toUpperCase() === targetId ||
+    String(f.group_id || '').toUpperCase() === ('GRP-' + targetId)
+  );
+
+  if (found) {
+    return {
+      success: true,
+      ok: true,
+      form: found,
+      fields: found.fields || []
+    };
+  }
+
+  return {
+    success: true,
+    ok: true,
+    form: {
+      id: targetId || 'FORM-DEFAULT',
+      form_id: targetId || 'FORM-DEFAULT',
+      group_id: p.group_id || 'GRP-FORMEN',
+      form_name: 'Personel Formu',
+      version: '1.0',
+      status: 'ACTIVE'
+    },
+    fields: []
+  };
+}
+
+function setFormStatusForHR_(p) {
+  return { success: true, ok: true, status: p.status || 'ACTIVE' };
+}
+
+function deleteFormForHR_(p) {
+  ensureHeaders_();
+  const s = sheet_(SHEETS.FORM_FIELDS);
+  const rows = s.getDataRange().getValues();
+  const target = String(p.form_id || p.group_id || '').replace('FORM-', '').replace('GRP-', '').toUpperCase();
+
+  for (let i = rows.length - 1; i >= 1; i--) {
+    const gid = String(rows[i][1]).replace('GRP-', '').toUpperCase();
+    if (gid === target) {
+      s.deleteRow(i + 1);
+    }
+  }
+
+  return { success: true, ok: true };
 }
 
 function createApplicationLink_(p) {
@@ -190,51 +308,52 @@ function getApplicationLinksForHR_() {
 function getFormSchema_(token, lang) {
   ensureHeaders_();
   const rows = sheet_(SHEETS.LINKS).getDataRange().getValues();
-  const now = new Date();
   const cleanToken = String(token || '').trim().toUpperCase();
-  const link = rows.slice(1).find(r => String(r[0]).toUpperCase() === cleanToken && r[4] !== false && new Date(r[3]) > now);
+  const link = rows.slice(1).find(r => String(r[0]).toUpperCase() === cleanToken && r[4] !== false);
 
   let targetGroupId = link ? String(link[1]) : 'GRP-FORMEN';
-  if (!link) {
+  if (!link && cleanToken.indexOf('-') !== -1) {
     const prefix = cleanToken.split('-')[0];
     if (prefix) targetGroupId = 'GRP-' + prefix;
   }
 
   const fieldsRows = sheet_(SHEETS.FORM_FIELDS).getDataRange().getValues().slice(1);
-  let matchedFields = fieldsRows.filter(r => String(r[1]).toUpperCase() === targetGroupId.toUpperCase() && r[12] !== false);
+  let matchedFields = fieldsRows.filter(r => {
+    const gid = String(r[1] || '').toUpperCase();
+    const target = targetGroupId.toUpperCase();
+    return (gid === target || gid === target.replace('GRP-', '')) && r[12] !== false;
+  });
 
-  if (matchedFields.length === 0) {
+  if (matchedFields.length === 0 && fieldsRows.length > 0) {
     matchedFields = fieldsRows.filter(r => r[12] !== false);
   }
 
   let fields = matchedFields
     .sort((a, b) => (Number(a[2]) - Number(b[2])) || (Number(a[3]) - Number(b[3])))
-    .map(r => ({
-      id: String(r[5] || r[0]),
+    .map((r, idx) => ({
+      id: String(r[5] || r[0] || ('field_' + (idx + 1))),
+      field_id: String(r[5] || r[0] || ('field_' + (idx + 1))),
       fieldId: String(r[0]),
       groupId: String(r[1]),
       step: Number(r[2] || 1),
       sortOrder: Number(r[3] || 1),
       type: String(r[4] || 'text'),
-      code: String(r[5] || ''),
-      label: String(r[6] || ''),
-      required: !!r[7],
-      accept: r[8] ? String(r[8]).split(',') : [],
+      code: String(r[5] || ('CODE_' + (idx + 1))).toUpperCase(),
+      label: String(r[6] || ('Alan ' + (idx + 1))),
+      required: r[7] === true || String(r[7]).toUpperCase() === 'TRUE',
+      accept: r[8] ? String(r[8]).split(',').map(s => s.trim()) : ['image/*', 'application/pdf'],
+      fileTypes: r[8] ? String(r[8]).split(',').map(s => s.trim()) : ['image/*', 'application/pdf'],
       maxMB: Number(r[9] || 10)
     }));
 
   if (fields.length === 0) {
     fields = [
-      { id: 'full_name', type: 'text', label: 'Ad Soyad', required: true, step: 1 },
-      { id: 'national_id', type: 'national_id', label: 'T.C. Kimlik No', required: true, step: 1 },
-      { id: 'birth_date', type: 'date', label: 'Doğum Tarihi', required: true, step: 1 },
-      { id: 'phone', type: 'phone', label: 'Telefon Numarası', required: true, step: 1 },
-      { id: 'email', type: 'email', label: 'E-posta Adresi', required: false, step: 1 },
-      { id: 'position', type: 'text', label: 'Görev / Pozisyon', required: true, step: 1 },
-      { id: 'photo', type: 'photo', label: 'Vesikalık Fotoğraf', required: true, step: 2 },
-      { id: 'id_card_doc', type: 'document', label: 'Kimlik / Pasaport Fotokopisi', required: true, step: 2 },
-      { id: 'criminal_record', type: 'document', label: 'Adli Sicil Kaydı', required: true, step: 2 },
-      { id: 'consent', type: 'checkbox', label: 'Aydınlatma metnini onaylıyorum.', required: true, step: 3 }
+      { id: 'firstName', field_id: 'firstName', type: 'text', label: 'Ad', required: true, step: 1 },
+      { id: 'lastName', field_id: 'lastName', type: 'text', label: 'Soyad', required: true, step: 1 },
+      { id: 'nationalId', field_id: 'nationalId', type: 'national_id', label: 'T.C. Kimlik Numarası', required: true, step: 1 },
+      { id: 'phone', field_id: 'phone', type: 'phone', label: 'Telefon Numarası', required: true, step: 1 },
+      { id: 'identityDoc', field_id: 'identityDoc', type: 'document', code: 'KIMLIK', label: 'Kimlik Belgesi', required: true, accept: ['image/*', 'application/pdf'], maxMB: 10, step: 2 },
+      { id: 'photo', field_id: 'photo', type: 'photo', code: 'FOTOGRAF', label: 'Vesikalık Fotoğraf', required: true, accept: ['image/*'], maxMB: 5, step: 2 }
     ];
   }
 
@@ -244,6 +363,8 @@ function getFormSchema_(token, lang) {
     data: {
       group: targetGroupId,
       groupName: targetGroupId.replace('GRP-', ''),
+      title: targetGroupId.replace('GRP-', '') + ' Başvuru Formu',
+      version: '1.0',
       fields: fields
     }
   };

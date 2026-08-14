@@ -2,7 +2,8 @@
  * STS Personnel Document System - Frontend App
  * Destek: Canlı Apps Script API + Özel Form Şemaları + Dinamik Form Render
  */
-const API_URL = "https://script.google.com/macros/s/AKfycbwPMm6sjG_viMpjyW9zhNsGfDA9PKjckV47pvMplonGOqS-FNOnDxbl47EYF67Lmk4/exec";
+const DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbxPt8aUhlSKcOYclQCQ2ZSQ3ZkLZLcSi3pw7SB6TfWkd_kB4QC_IwDGVM6W-nIvCFad/exec";
+const API_URL = localStorage.getItem("sts_api_url") || DEFAULT_API_URL;
 
 const defaultLabels = {
   text: "Metin",

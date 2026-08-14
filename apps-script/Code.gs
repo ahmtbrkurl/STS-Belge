@@ -58,8 +58,11 @@ function doPost(e) {
     if (action === 'createGroup' || action === 'createApplicationGroup') return json_(createGroup_(payload));
     if (action === 'getGroups') return json_(getGroups_());
 
-    if (action === 'createForm' || action === 'saveForm' || action === 'updateFormForHR') return json_(saveFormForHR_(payload));
-    if (action === 'getForms') return json_(getForms_());
+    if (action === 'createForm' || action === 'saveForm' || action === 'saveFormForHR' || action === 'updateFormForHR') return json_(saveFormForHR_(payload));
+    if (action === 'getForms' || action === 'getFormsForHR') return json_(getForms_());
+    if (action === 'getFormDefinitionForHR' || action === 'getFormDefinition') return json_(getFormDefinitionForHR_(payload));
+    if (action === 'setFormStatusForHR' || action === 'setFormStatus') return json_(setFormStatusForHR_(payload));
+    if (action === 'deleteFormForHR' || action === 'deleteForm') return json_(deleteFormForHR_(payload));
     if (action === 'saveField') return json_(saveFormField_(payload));
 
     if (action === 'getPersonnelList') return json_(getPersonnelList_());
