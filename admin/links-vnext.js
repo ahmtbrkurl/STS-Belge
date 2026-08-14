@@ -28,7 +28,7 @@
 
 
   const PAGE_URL =
-    "https://ahmtbrkurl.github.io/Personel-DMS/";
+    "https://ahmtbrkurl.github.io/STS-Belge/";
 
 
   const LANG_KEY =
