@@ -1,24 +1,37 @@
 /*
  * STS Personnel Document System - Frontend App
- * Destek: Canlı Apps Script API + Yerel Fallback
+ * Destek: Canlı Apps Script API + Özel Form Şemaları + Dinamik Form Render
  */
 const API_URL = "https://script.google.com/macros/s/AKfycbwPMm6sjG_viMpjyW9zhNsGfDA9PKjckV47pvMplonGOqS-FNOnDxbl47EYF67Lmk4/exec";
+
+const defaultLabels = {
+  text: "Metin",
+  date: "Tarih",
+  phone: "Telefon",
+  email: "E-posta",
+  national_id: "Kimlik No",
+  passport: "Pasaport No",
+  document: "Belge",
+  photo: "Fotoğraf",
+  select: "Açılır Liste",
+  checkbox: "Onay"
+};
 
 const demoForm = {
   group: "FORMEN",
   title: "Formen Personel Başvuru Formu",
   version: "1.0",
   fields: [
-    {id:"firstName", type:"text", label:"Ad", required:true},
-    {id:"lastName", type:"text", label:"Soyad", required:true},
-    {id:"nationalId", type:"national_id", label:"T.C. Kimlik Numarası", required:true},
-    {id:"passport", type:"passport", label:"Pasaport Numarası", required:false},
-    {id:"phone", type:"phone", label:"Telefon", required:true},
-    {id:"email", type:"email", label:"E-posta", required:false},
-    {id:"identityDoc", type:"document", code:"KIMLIK", label:"Kimlik Belgesi", required:true, accept:["image/*","application/pdf"], maxMB:10},
-    {id:"passportDoc", type:"document", code:"PASAPORT", label:"Pasaport", required:false, accept:["application/pdf","image/*"], maxMB:10},
-    {id:"myk", type:"document", code:"MYK", label:"MYK Belgesi", required:true, accept:["application/pdf","image/*"], maxMB:10},
-    {id:"photo", type:"photo", code:"FOTOGRAF", label:"Vesikalık Fotoğraf", required:true, accept:["image/*"], maxMB:5}
+    { id: "firstName", field_id: "firstName", type: "text", label: "Ad", required: true },
+    { id: "lastName", field_id: "lastName", type: "text", label: "Soyad", required: true },
+    { id: "nationalId", field_id: "nationalId", type: "national_id", label: "T.C. Kimlik Numarası", required: true },
+    { id: "passport", field_id: "passport", type: "passport", label: "Pasaport Numarası", required: false },
+    { id: "phone", field_id: "phone", type: "phone", label: "Telefon", required: true },
+    { id: "email", field_id: "email", type: "email", label: "E-posta", required: false },
+    { id: "identityDoc", field_id: "identityDoc", type: "document", code: "KIMLIK", label: "Kimlik Belgesi", required: true, accept: ["image/*", "application/pdf"], maxMB: 10 },
+    { id: "passportDoc", field_id: "passportDoc", type: "document", code: "PASAPORT", label: "Pasaport", required: false, accept: ["application/pdf", "image/*"], maxMB: 10 },
+    { id: "myk", field_id: "myk", type: "document", code: "MYK", label: "MYK Belgesi", required: true, accept: ["application/pdf", "image/*"], maxMB: 10 },
+    { id: "photo", field_id: "photo", type: "photo", code: "FOTOGRAF", label: "Vesikalık Fotoğraf", required: true, accept: ["image/*"], maxMB: 5 }
   ]
 };
 
@@ -31,8 +44,55 @@ let state = {
   submitting: false
 };
 
-function esc(v){
-  return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
+}
+
+// --------------------------------------------------
+// ALAN ŞEMASI NORMALİZASYONU
+// --------------------------------------------------
+function normalizeFields(rawFields) {
+  if (!Array.isArray(rawFields) || rawFields.length === 0) {
+    return demoForm.fields;
+  }
+  return rawFields.map((f, index) => {
+    const rawId = f.field_id || f.id || f.code || (`field_${index + 1}`);
+    const code = f.code || f.id || (`CODE_${index + 1}`);
+    
+    let fileTypes = [];
+    if (Array.isArray(f.fileTypes) && f.fileTypes.length) {
+      fileTypes = f.fileTypes;
+    } else if (Array.isArray(f.accept) && f.accept.length) {
+      fileTypes = f.accept;
+    } else if (typeof f.accept === "string" && f.accept) {
+      fileTypes = f.accept.split(",").map(s => s.trim());
+    } else {
+      fileTypes = ["image/*", "application/pdf"];
+    }
+
+    let options = [];
+    if (Array.isArray(f.options)) {
+      options = f.options;
+    } else if (typeof f.options === "string") {
+      options = f.options.split("\n").map(s => s.trim()).filter(Boolean);
+    }
+
+    return {
+      id: String(rawId),
+      field_id: String(rawId),
+      type: f.type || "text",
+      label: f.label || defaultLabels[f.type] || `Alan ${index + 1}`,
+      code: String(code).toUpperCase(),
+      required: f.required === true,
+      helpText: f.helpText || "",
+      placeholder: f.placeholder || "",
+      fileTypes: fileTypes,
+      accept: fileTypes,
+      maxMB: Number(f.maxMB || 10),
+      options: options,
+      step: Number(f.step || f.page || 1)
+    };
+  });
 }
 
 // --------------------------------------------------
@@ -40,41 +100,104 @@ function esc(v){
 // --------------------------------------------------
 async function fetchFormDefinition(token) {
   if (!token) return demoForm;
+  const cleanToken = token.trim().toUpperCase();
   
-  // 1. Apps Script API'den almayı dene
+  // 1. Canlı Apps Script API üzerinden form şemasını sorgula
   try {
-    const res = await fetch(`${API_URL}?action=getFormSchema&token=${encodeURIComponent(token)}`);
+    const res = await fetch(`${API_URL}?action=getFormSchema&token=${encodeURIComponent(cleanToken)}`);
     const json = await res.json();
-    if (json && json.success && json.data) {
+    if (json && (json.success || json.ok) && json.data && Array.isArray(json.data.fields) && json.data.fields.length > 0) {
       return {
         group: json.data.group || "GENEL",
         title: (json.data.groupName || json.data.group || "Personel") + " Başvuru Formu",
-        version: "1.0",
-        fields: json.data.fields || demoForm.fields
+        version: json.data.version || "1.0",
+        fields: normalizeFields(json.data.fields)
       };
     }
   } catch (e) {
     console.warn("Apps Script form getirme hatası, yerel belleğe bakılıyor:", e);
   }
 
-  // 2. LocalStorage üzerinden eşleşen grup formunu bul
+  // 2. LocalStorage'da oluşturulan dinamik formlar ve linkler arasından ara
   try {
+    const savedForms = JSON.parse(localStorage.getItem("sts_forms") || "{}");
     const savedLinks = JSON.parse(localStorage.getItem("sts_links") || "[]");
-    const linkObj = savedLinks.find(l => (l.token || "").toUpperCase() === token.trim().toUpperCase());
+
+    // A. Link eşleşmesi
+    const linkObj = savedLinks.find(l => 
+      ((l.token || l.application_code || "").toUpperCase() === cleanToken)
+    );
+
     if (linkObj) {
-      const savedForms = JSON.parse(localStorage.getItem("sts_forms") || "{}");
-      if (linkObj.groupId && savedForms[linkObj.groupId]) {
+      const formId = linkObj.form_id || linkObj.formId;
+      const groupId = linkObj.group_id || linkObj.groupId;
+      
+      let matched = null;
+      if (formId && savedForms[formId]) {
+        matched = savedForms[formId];
+      } else if (groupId && savedForms[groupId]) {
+        matched = savedForms[groupId];
+      } else if (formId) {
+        matched = Object.values(savedForms).find(f => f.id === formId || f.form_id === formId);
+      }
+
+      if (matched && matched.fields && matched.fields.length > 0) {
         return {
-          group: linkObj.groupId,
-          title: (linkObj.groupName || linkObj.groupId) + " Başvuru Formu",
-          version: savedForms[linkObj.groupId].version || "1.0",
-          fields: savedForms[linkObj.groupId].fields || demoForm.fields
+          group: matched.group_id || groupId || "GENEL",
+          title: matched.form_name || ((linkObj.group_name || groupId) + " Başvuru Formu"),
+          version: matched.version || "1.0",
+          fields: normalizeFields(matched.fields)
         };
       }
     }
-  } catch (e) {}
 
-  return demoForm;
+    // B. Token prefix eşleşmesi (örn: FORMEN-..., ISCI-...)
+    const prefix = cleanToken.split("-")[0];
+    if (prefix) {
+      const groupKey = "GRP-" + prefix;
+      let matched = savedForms[groupKey] || savedForms[prefix];
+      if (!matched) {
+        matched = Object.values(savedForms).find(f => 
+          String(f.group_id || "").toUpperCase() === groupKey ||
+          String(f.group_id || "").toUpperCase() === prefix
+        );
+      }
+      if (matched && matched.fields && matched.fields.length > 0) {
+        return {
+          group: matched.group_id || prefix,
+          title: matched.form_name || `${prefix} Personel Başvuru Formu`,
+          version: matched.version || "1.0",
+          fields: normalizeFields(matched.fields)
+        };
+      }
+    }
+
+    // C. Kayıtlı herhangi bir aktif form var mı?
+    const allForms = Object.values(savedForms);
+    if (allForms.length > 0) {
+      const lastForm = allForms[allForms.length - 1];
+      if (lastForm && lastForm.fields && lastForm.fields.length > 0) {
+        return {
+          group: lastForm.group_id || "GENEL",
+          title: lastForm.form_name || "Personel Başvuru Formu",
+          version: lastForm.version || "1.0",
+          fields: normalizeFields(lastForm.fields)
+        };
+      }
+    }
+  } catch (e) {
+    console.error("Yerel form okuma hatası:", e);
+  }
+
+  // 3. Hiçbir özel form bulunamazsa varsayılan şemayı döndür
+  const prefix = cleanToken.split("-")[0] || "GENEL";
+  const groupLabel = prefix === "ISCI" ? "İşçi" : (prefix === "MUH" ? "Mühendis" : (prefix === "FORMEN" ? "Formen" : prefix));
+  return {
+    group: prefix,
+    title: `${groupLabel} Personel Başvuru Formu`,
+    version: "1.0",
+    fields: demoForm.fields
+  };
 }
 
 // --------------------------------------------------
@@ -144,7 +267,6 @@ async function checkManageLink(manageToken) {
     if (result && (result.success || result.ok) && result.person) {
       renderManagePage(result.person, result.documents || []);
     } else {
-      // Demo person verisiyle aç
       renderManagePage({
         personnel_id: "PER-2026-DEMO",
         first_name: "Kayıtlı",
@@ -240,47 +362,34 @@ function renderManagePage(personnel, documents) {
         return;
       }
 
-      const status = document.getElementById("manageStatus_" + doc.code);
-      if (status) {
-        status.textContent = "Belge yükleniyor...";
-        status.style.color = "#2563eb";
-      }
+      const statusEl = document.getElementById("manageStatus_" + doc.code);
+      if (statusEl) statusEl.innerHTML = '<span style="color:#2563eb;">Yükleniyor...</span>';
 
       try {
-        await uploadManageDocument(personnel.personnel_id || personnel.personId, doc.code, file);
-        if (status) {
-          status.textContent = "Belge başarıyla yüklendi.";
-          status.style.color = "#16a34a";
+        const b64 = await fileToBase64(file);
+        const res = await apiPost({
+          action: "updateDocumentByManage",
+          token: manageToken,
+          docType: doc.code,
+          fileName: file.name,
+          mimeType: file.type,
+          fileData: b64
+        });
+
+        if (res && (res.success || res.ok)) {
+          if (statusEl) statusEl.innerHTML = '<span style="color:#16a34a;">✅ Yeni versiyon başarıyla yüklendi!</span>';
+        } else {
+          throw new Error(res.error || "Yükleme başarısız oldu.");
         }
-        event.target.value = "";
       } catch (err) {
-        if (status) {
-          status.textContent = "Yükleme başarısız.";
-          status.style.color = "#dc2626";
-        }
-        alert("Hata: " + err.message);
-        event.target.value = "";
+        if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626;">❌ Hata: ${esc(err.message)}</span>`;
       }
     });
   });
 }
 
-async function uploadManageDocument(personnelId, documentCode, file) {
-  const base64 = await fileToBase64(file);
-  return await apiPost({
-    action: "updatePersonnelDocument",
-    personnel_id: personnelId,
-    document_code: documentCode,
-    file: {
-      name: file.name,
-      type: file.type,
-      data: base64
-    }
-  });
-}
-
 // --------------------------------------------------
-// FORM RENDER VE DOĞRULAMA
+// FORM RENDER ETME
 // --------------------------------------------------
 function renderForm() {
   document.getElementById("landing")?.classList.add("hidden");
@@ -297,18 +406,22 @@ function renderForm() {
     <div class="card">
       <div class="step">Adım ${state.page + 1} / ${pages}</div>
       <h2>${esc(state.form.title)}</h2>
-      <div class="preview"><strong>Grup:</strong> ${esc(state.form.group)} &nbsp; <strong>Form:</strong> v${esc(state.form.version)}</div>
-      ${fields.map(renderField).join("")}
-      <div class="actions">
-        ${state.page > 0 ? '<button class="secondary" id="prevBtn">Geri</button>' : '<span></span>'}
-        ${state.page < pages - 1 ? '<button class="primary" id="nextBtn">Devam</button>' : '<button class="primary" id="finishBtn">Başvuruyu Tamamla</button>'}
+      <div class="preview"><strong>Grup:</strong> ${esc(state.form.group)} &nbsp; <strong>Versiyon:</strong> v${esc(state.form.version)}</div>
+      <div style="margin-top:20px;">
+        ${fields.map(renderField).join("")}
+      </div>
+      <div class="actions" style="margin-top:24px;">
+        ${state.page > 0 ? '<button type="button" class="secondary" id="prevBtn">Geri</button>' : '<span></span>'}
+        ${state.page < pages - 1 ? '<button type="button" class="primary" id="nextBtn">Devam</button>' : '<button type="button" class="primary" id="finishBtn">Başvuruyu Tamamla</button>'}
       </div>
     </div>
   `;
 
+  // Olay dinleyicilerini bağla
   fields.forEach(f => {
     const el = document.getElementById("field_" + f.id);
     if (!el) return;
+
     if (f.type === "document" || f.type === "photo") {
       el.addEventListener("change", e => {
         const file = e.target.files[0];
@@ -320,11 +433,21 @@ function renderForm() {
           }
           state.files[f.id] = file;
           const name = document.getElementById("name_" + f.id);
-          if (name) name.textContent = file.name;
+          if (name) name.textContent = `✅ ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
         }
       });
+    } else if (f.type === "checkbox") {
+      el.addEventListener("change", e => {
+        state.values[f.id] = e.target.checked;
+      });
+    } else if (f.type === "select") {
+      el.addEventListener("change", e => {
+        state.values[f.id] = e.target.value;
+      });
     } else {
-      el.addEventListener("input", e => state.values[f.id] = e.target.value);
+      el.addEventListener("input", e => {
+        state.values[f.id] = e.target.value;
+      });
     }
   });
 
@@ -332,12 +455,16 @@ function renderForm() {
     if (validate(fields)) {
       state.page++;
       renderForm();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   });
+
   document.getElementById("prevBtn")?.addEventListener("click", () => {
     state.page--;
     renderForm();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   });
+
   document.getElementById("finishBtn")?.addEventListener("click", async () => {
     if (validate(fields)) {
       await submitApplication();
@@ -346,23 +473,65 @@ function renderForm() {
 }
 
 function renderField(f) {
-  const req = f.required ? '<span class="required">*</span>' : "";
+  const req = f.required ? '<span class="required" style="color:#ef4444; margin-left:4px;">*</span>' : "";
+  const help = f.helpText ? `<small style="display:block; color:#6b7280; font-size:12px; margin-top:4px;">${esc(f.helpText)}</small>` : "";
+
   if (f.type === "document" || f.type === "photo") {
+    const file = state.files[f.id];
+    const acceptStr = (f.accept || f.fileTypes || ["image/*", "application/pdf"]).join(",");
     return `
-      <div class="field">
-        <label>${esc(f.label)} ${req}</label>
-        <div class="upload">
-          <input id="field_${f.id}" type="file" accept="${esc((f.accept || []).join(","))}">
-          <div id="name_${f.id}" class="file-name">${state.files[f.id] ? esc(state.files[f.id].name) : "Dosya seçilmedi"}</div>
+      <div class="field" style="margin-bottom:18px;">
+        <label style="display:block; font-weight:600; margin-bottom:6px; color:#1f2937;">${esc(f.label)} ${req}</label>
+        <div class="upload" style="border:2px dashed #cbd5e1; border-radius:10px; padding:16px; text-align:center; background:#f8fafc;">
+          <input id="field_${esc(f.id)}" type="file" accept="${esc(acceptStr)}" style="display:block; width:100%; cursor:pointer;">
+          <div id="name_${esc(f.id)}" class="file-name" style="margin-top:8px; font-size:13px; color:#475569; font-weight:500;">
+            ${file ? `✅ ${esc(file.name)} (${(file.size / 1024 / 1024).toFixed(2)} MB)` : "Dosya seçin (Maks. " + (f.maxMB || 10) + " MB)"}
+          </div>
         </div>
+        ${help}
       </div>
     `;
   }
-  const type = f.type === "national_id" || f.type === "passport" ? "text" : f.type;
+
+  if (f.type === "select") {
+    const currentVal = state.values[f.id] || "";
+    const optionsHtml = (f.options || []).map(opt => `
+      <option value="${esc(opt)}" ${currentVal === opt ? 'selected' : ''}>${esc(opt)}</option>
+    `).join("");
+    return `
+      <div class="field" style="margin-bottom:18px;">
+        <label style="display:block; font-weight:600; margin-bottom:6px; color:#1f2937;">${esc(f.label)} ${req}</label>
+        <select id="field_${esc(f.id)}" class="input-select" style="width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; font-size:14px;">
+          <option value="">Seçiniz...</option>
+          ${optionsHtml}
+        </select>
+        ${help}
+      </div>
+    `;
+  }
+
+  if (f.type === "checkbox") {
+    const isChecked = state.values[f.id] === true || state.values[f.id] === "true";
+    return `
+      <div class="field" style="margin-bottom:18px;">
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; font-weight:500; color:#1f2937;">
+          <input id="field_${esc(f.id)}" type="checkbox" ${isChecked ? "checked" : ""} style="width:18px; height:18px; margin-top:2px; cursor:pointer;">
+          <span>${esc(f.label)} ${req}</span>
+        </label>
+        ${help}
+      </div>
+    `;
+  }
+
+  const inputType = f.type === "national_id" || f.type === "passport" ? "text" : (f.type === "phone" ? "tel" : (f.type === "date" ? "date" : (f.type === "email" ? "email" : "text")));
+  const extraAttrs = f.type === "national_id" ? 'inputmode="numeric" maxlength="11"' : '';
+  const currentVal = state.values[f.id] || "";
+
   return `
-    <div class="field">
-      <label>${esc(f.label)} ${req}</label>
-      <input id="field_${f.id}" type="${esc(type)}" value="${esc(state.values[f.id] || "")}" ${f.type === "national_id" ? 'inputmode="numeric" maxlength="11"' : ''}>
+    <div class="field" style="margin-bottom:18px;">
+      <label style="display:block; font-weight:600; margin-bottom:6px; color:#1f2937;">${esc(f.label)} ${req}</label>
+      <input id="field_${esc(f.id)}" type="${esc(inputType)}" placeholder="${esc(f.placeholder || '')}" value="${esc(currentVal)}" ${extraAttrs} style="width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:14px; box-sizing:border-box;">
+      ${help}
     </div>
   `;
 }
@@ -370,18 +539,27 @@ function renderField(f) {
 function validate(fields) {
   for (const f of fields) {
     if (!f.required) continue;
-    if ((f.type === "document" || f.type === "photo") && !state.files[f.id]) {
-      alert(`${f.label} zorunludur.`);
-      return false;
+    if (f.type === "document" || f.type === "photo") {
+      if (!state.files[f.id]) {
+        alert(`${f.label} belgesi zorunludur.`);
+        return false;
+      }
+    } else if (f.type === "checkbox") {
+      if (!state.values[f.id]) {
+        alert(`${f.label} onaylanmalıdır.`);
+        return false;
+      }
+    } else {
+      const val = String(state.values[f.id] || "").trim();
+      if (!val) {
+        alert(`${f.label} alanı zorunludur.`);
+        return false;
+      }
+      if (f.type === "national_id" && !/^\d{11}$/.test(val)) {
+        alert(`${f.label} 11 haneli rakamlardan oluşmalıdır.`);
+        return false;
+      }
     }
-    if (f.type !== "document" && f.type !== "photo" && !state.values[f.id]) {
-      alert(`${f.label} zorunludur.`);
-      return false;
-    }
-  }
-  if (state.values.nationalId && !/^\d{11}$/.test(state.values.nationalId)) {
-    alert("T.C. Kimlik No 11 haneli olmalıdır.");
-    return false;
   }
   return true;
 }
@@ -497,18 +675,26 @@ async function submitApplication() {
 
     updateUploadProgress(50, "Belgeler kaydediliyor...");
 
+    const formData = {};
+    for (const f of state.form.fields) {
+      if (f.type !== "document" && f.type !== "photo") {
+        formData[f.id] = state.values[f.id] ?? "";
+        if (f.code) formData[f.code] = state.values[f.id] ?? "";
+      }
+    }
+
     const submitRes = await apiPost({
       action: "submitApplication",
-      groupId: state.form.group || "GRP-FORMEN",
+      token: state.token,
+      groupId: state.form.group || "GRP-GENEL",
       formVersion: state.form.version || "1.0",
       formData: {
-        first_name: state.values.firstName,
-        last_name: state.values.lastName,
-        full_name: `${state.values.firstName || ''} ${state.values.lastName || ''}`.trim(),
-        national_id: state.values.nationalId,
-        passport_number: state.values.passport || "",
-        phone: state.values.phone || "",
-        email: state.values.email || ""
+        ...formData,
+        first_name: state.values.firstName || state.values.first_name || state.values.ad || "",
+        last_name: state.values.lastName || state.values.last_name || state.values.soyad || "",
+        national_id: state.values.nationalId || state.values.national_id || state.values.tc || "",
+        phone: state.values.phone || state.values.telefon || "",
+        email: state.values.email || state.values.eposta || ""
       },
       files: filesPayload
     });

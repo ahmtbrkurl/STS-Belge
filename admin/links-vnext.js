@@ -500,14 +500,18 @@
     ];
 
     if (action === "getApplicationLinkOptions") {
+      const formsMap = JSON.parse(localStorage.getItem("sts_forms") || "{}");
+      const dynamicForms = Object.values(formsMap);
+      const defaultForms = [
+        { id: "DEFAULT", form_name: "Genel Personel Formu", group_id: "GRP-FORMEN" },
+        { id: "FORM-FORMEN", form_name: "Formen Başvuru Formu", group_id: "GRP-FORMEN" },
+        { id: "FORM-ISCI", form_name: "İşçi Başvuru Formu", group_id: "GRP-ISCI" }
+      ];
       return {
         success: true,
+        ok: true,
         groups: savedGroups,
-        forms: [
-          { id: "DEFAULT", form_name: "Genel Personel Formu", group_id: "GRP-FORMEN" },
-          { id: "FORM-FORMEN", form_name: "Formen Başvuru Formu", group_id: "GRP-FORMEN" },
-          { id: "FORM-ISCI", form_name: "İşçi Başvuru Formu", group_id: "GRP-ISCI" }
-        ],
+        forms: dynamicForms.length ? dynamicForms : defaultForms,
         campaigns: [
           { id: "CMP-GENEL", name: "2026 Genel Alım", month: "2026-03" }
         ]
@@ -522,17 +526,24 @@
     }
 
     if (action === "createApplicationLink") {
+      const generatedCode = (data.group_id || "APP").replace("GRP-", "").toUpperCase() + "-" + Math.random().toString(36).substring(2, 10).toUpperCase();
       const newLink = {
+        application_link_id: "LNK-" + Math.random().toString(36).substring(2, 9).toUpperCase(),
         id: "LNK-" + Math.random().toString(36).substring(2, 9).toUpperCase(),
-        token: (data.group_id || "APP").replace("GRP-", "") + "-" + Math.random().toString(36).substring(2, 10).toUpperCase(),
+        application_code: generatedCode,
+        token: generatedCode,
         group_id: data.group_id,
         group_name: data.group_name || data.group_id,
         form_id: data.form_id || "DEFAULT",
         form_name: data.form_name || "Genel Form",
+        campaign_id: data.campaign_id,
         campaign_name: data.campaign_name || "Genel",
-        max_usage: data.max_usage || 0,
-        start_date: data.start_date || new Date().toISOString(),
-        end_date: data.end_date || "",
+        max_uses: Number(data.max_uses || data.max_usage || 30),
+        max_usage: Number(data.max_uses || data.max_usage || 30),
+        start_at: data.start_at || data.start_date || new Date().toISOString(),
+        start_date: data.start_at || data.start_date || new Date().toISOString(),
+        end_at: data.end_at || data.end_date || "",
+        end_date: data.end_at || data.end_date || "",
         status: "ACTIVE",
         created_at: new Date().toISOString(),
         used_count: 0
@@ -541,30 +552,34 @@
       localStorage.setItem("sts_links", JSON.stringify(savedLinks));
       return {
         success: true,
+        ok: true,
         link: newLink,
-        token: newLink.token
+        application_link_id: newLink.application_link_id,
+        application_code: newLink.application_code,
+        token: newLink.token,
+        url: PAGE_URL + "?token=" + encodeURIComponent(newLink.token)
       };
     }
 
     if (action === "updateApplicationLinkStatus") {
-      const idx = savedLinks.findIndex(l => l.id === data.link_id || l.token === data.link_id);
+      const idx = savedLinks.findIndex(l => (l.application_link_id === data.application_link_id || l.id === data.application_link_id || l.token === data.application_link_id || l.application_code === data.application_link_id));
       if (idx !== -1) {
         savedLinks[idx].status = data.status;
         localStorage.setItem("sts_links", JSON.stringify(savedLinks));
       }
-      return { success: true };
+      return { success: true, ok: true };
     }
 
     if (action === "updateApplicationLink") {
-      const idx = savedLinks.findIndex(l => l.id === data.link_id);
+      const idx = savedLinks.findIndex(l => (l.application_link_id === data.application_link_id || l.id === data.application_link_id));
       if (idx !== -1) {
         Object.assign(savedLinks[idx], data);
         localStorage.setItem("sts_links", JSON.stringify(savedLinks));
       }
-      return { success: true };
+      return { success: true, ok: true };
     }
 
-    return { success: true };
+    return { success: true, ok: true };
   }
 
 
@@ -573,36 +588,15 @@
   // ==========================================================
 
   function linkUrl(link) {
-
-    if (!link) {
-
-      return "";
-
+    if (!link) return "";
+    const token = link.token || link.application_code || (link.link && (link.link.token || link.link.application_code));
+    if (token) {
+      return PAGE_URL + "?token=" + encodeURIComponent(token);
     }
-
-
-    if (link.url) {
-
-      return link.url;
-
+    if (link.url && typeof link.url === "string") {
+      return link.url.replace(/https:\/\/[^/]+\/[^/?#]+\/?/i, PAGE_URL);
     }
-
-
-    if (link.token) {
-
-      return (
-        PAGE_URL +
-        "?token=" +
-        encodeURIComponent(
-          link.token
-        )
-      );
-
-    }
-
-
     return "";
-
   }
 
 
@@ -2178,41 +2172,15 @@
               .map(
                 link => {
 
-                  const url =
-                    linkUrl(
-                      link
-                    );
-
-
-                  const used =
-                    Number(
-                      link.used_count ||
-                      0
-                    );
-
-
-                  const max =
-                    Number(
-                      link.max_uses ||
-                      0
-                    );
-
-
-                  const remaining =
-                    Math.max(
-                      0,
-                      max - used
-                    );
-
-
-                  const active =
-                    String(
-                      link.status ||
-                      ""
-                    )
-                    .toUpperCase() ===
-                    "ACTIVE";
-
+                  const url = linkUrl(link);
+                  const appCode = link.application_code || link.token || link.id || "APP-TOKEN";
+                  const linkId = link.application_link_id || link.id || appCode;
+                  const used = Number(link.used_count || link.used || 0);
+                  const max = Number(link.max_uses || link.max_usage || 30);
+                  const remaining = Math.max(0, max - used);
+                  const active = String(link.status || "").toUpperCase() === "ACTIVE";
+                  const startVal = link.start_at || link.start_date || link.created_at;
+                  const endVal = link.end_at || link.end_date;
 
                   return `
 
@@ -2221,10 +2189,7 @@
                       <td>
 
                         <strong>
-                          ${esc(
-                            link.application_code ||
-                            ""
-                          )}
+                          ${esc(appCode)}
                         </strong>
 
                       </td>
@@ -2241,7 +2206,7 @@
                           "
                           title="${esc(url)}"
                         >
-                          ${esc(url)}
+                          <a href="${esc(url)}" target="_blank" style="color:#2563eb; text-decoration:underline;">${esc(url)}</a>
                         </div>
 
                       </td>
@@ -2277,14 +2242,14 @@
 
                       <td>
                         ${formatDate(
-                          link.start_at
+                          startVal
                         )}
                       </td>
 
 
                       <td>
                         ${formatDate(
-                          link.end_at
+                          endVal
                         )}
                       </td>
 
@@ -2323,9 +2288,7 @@
                           <button
                             type="button"
                             class="secondary link-copy"
-                            data-id="${esc(
-                              link.application_link_id
-                            )}"
+                            data-id="${esc(linkId)}"
                           >
                             ${t().copy}
                           </button>
@@ -2334,9 +2297,7 @@
                           <button
                             type="button"
                             class="secondary link-edit"
-                            data-id="${esc(
-                              link.application_link_id
-                            )}"
+                            data-id="${esc(linkId)}"
                           >
                             ${t().edit}
                           </button>
@@ -2345,9 +2306,7 @@
                           <button
                             type="button"
                             class="secondary link-toggle"
-                            data-id="${esc(
-                              link.application_link_id
-                            )}"
+                            data-id="${esc(linkId)}"
                             data-status="${
                               active
                                 ? "ACTIVE"
@@ -2399,7 +2358,7 @@
                 links.find(
                   item =>
                     String(
-                      item.application_link_id
+                      item.application_link_id || item.id || item.token || item.application_code
                     ) ===
                     String(
                       button.dataset.id

@@ -92,51 +92,118 @@ function getLocalMockResponse(data) {
   const action = data ? data.action : "";
   const savedLinks = JSON.parse(localStorage.getItem("sts_links") || "[]");
   const savedGroups = JSON.parse(localStorage.getItem("sts_groups") || "null") || demo.groups;
+  const formsMap = JSON.parse(localStorage.getItem("sts_forms") || "{}");
 
-  if (action === "getApplicationLinkOptions") {
+  if (action === "getFormsForHR" || action === "getForms") {
+    const list = Object.values(formsMap);
     return {
       success: true,
+      ok: true,
+      forms: list.length ? list : (hrForms.length ? hrForms : [])
+    };
+  }
+
+  if (action === "getFormDefinitionForHR") {
+    const targetId = data.form_id || data.formId;
+    let found = formsMap[targetId];
+    if (!found) {
+      found = Object.values(formsMap).find(f => f.id === targetId || f.form_id === targetId || f.group_id === targetId);
+    }
+    if (found) {
+      return {
+        success: true,
+        ok: true,
+        form: found,
+        fields: found.fields || []
+      };
+    }
+    return {
+      success: true,
+      ok: true,
+      form: { form_id: targetId, group_id: "GRP-FORMEN", form_name: "Personel Formu", version: "1.0" },
+      fields: []
+    };
+  }
+
+  if (action === "getApplicationLinkOptions") {
+    const formList = Object.values(formsMap);
+    return {
+      success: true,
+      ok: true,
       groups: savedGroups,
-      forms: hrForms.length ? hrForms : [{ id: "DEFAULT", form_name: "Genel Personel Formu", group_id: "GRP-FORMEN" }],
-      campaigns: []
+      forms: formList.length ? formList : (hrForms.length ? hrForms : [{ id: "DEFAULT", form_name: "Genel Personel Formu", group_id: "GRP-FORMEN" }]),
+      campaigns: [
+        { id: "CMP-GENEL", name: "2026 Genel Alım", month: "2026-03" }
+      ]
     };
   }
 
   if (action === "getApplicationLinks") {
     return {
       success: true,
+      ok: true,
       links: savedLinks
     };
   }
 
-  if (action === "createForm") {
+  if (action === "createForm" || action === "saveFormForHR") {
+    const fId = "FORM-" + (data.group_id || "GENEL").replace("GRP-", "").toUpperCase() + "-" + Math.random().toString(36).substring(2, 7).toUpperCase();
     const newForm = {
-      id: "FORM-" + Math.random().toString(36).substring(2, 9).toUpperCase(),
+      id: fId,
+      form_id: fId,
       form_name: data.form_name,
       group_id: data.group_id,
-      version: data.version,
-      fields: data.fields
+      version: data.version || "1.0",
+      status: "ACTIVE",
+      created_at: new Date().toISOString(),
+      fields: data.fields || []
     };
-    const formsMap = JSON.parse(localStorage.getItem("sts_forms") || "{}");
     formsMap[data.group_id] = newForm;
+    formsMap[fId] = newForm;
     localStorage.setItem("sts_forms", JSON.stringify(formsMap));
-    return { success: true, form_id: newForm.id };
+    return { success: true, ok: true, form_id: newForm.id, form: newForm };
   }
 
   if (action === "updateFormForHR") {
-    const formsMap = JSON.parse(localStorage.getItem("sts_forms") || "{}");
-    formsMap[data.group_id] = {
-      id: data.form_id,
+    const fId = data.form_id;
+    const updatedForm = {
+      id: fId,
+      form_id: fId,
       form_name: data.form_name,
       group_id: data.group_id,
-      version: data.version,
-      fields: data.fields
+      version: data.version || "1.0",
+      status: "ACTIVE",
+      updated_at: new Date().toISOString(),
+      fields: data.fields || []
     };
+    formsMap[data.group_id] = updatedForm;
+    formsMap[fId] = updatedForm;
     localStorage.setItem("sts_forms", JSON.stringify(formsMap));
-    return { success: true, form_id: data.form_id };
+    return { success: true, ok: true, form_id: fId, form: updatedForm };
   }
 
-  return { success: true };
+  if (action === "setFormStatusForHR") {
+    const fId = data.form_id;
+    if (formsMap[fId]) {
+      formsMap[fId].status = data.status;
+      localStorage.setItem("sts_forms", JSON.stringify(formsMap));
+    }
+    return { success: true, ok: true };
+  }
+
+  if (action === "getGroups") {
+    return { success: true, ok: true, groups: savedGroups };
+  }
+
+  if (action === "createGroup") {
+    const gId = "GRP-" + (data.name || "YENI").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+    const newGroup = { id: gId, name: data.name, description: data.description || "", people: 0, docs: 0 };
+    savedGroups.push(newGroup);
+    localStorage.setItem("sts_groups", JSON.stringify(savedGroups));
+    return { success: true, ok: true, group: newGroup, groupId: gId };
+  }
+
+  return { success: true, ok: true };
 }
 
 
@@ -3103,129 +3170,11 @@ if($("previewBtn")){
 
 
 // ============================================================
-// LEGACY LINK AREA
+// LINK MANAGEMENT DELEGATION
 // ============================================================
 //
-// Başvuru linklerinin gerçek yönetimi
-// links-vnext.js tarafından yapılmaktadır.
-//
-// Buradaki demo yapı yalnızca eski HTML
-// elemanları bulunması halinde hata oluşmasını
-// engellemek için korunmaktadır.
+// Başvuru linklerinin yönetimi links-vnext.js tarafından yapılmaktadır.
 // ============================================================
-
-if($("newLinkBtn")){
-
-  $("newLinkBtn").onclick=
-    ()=>{
-
-      const g=
-        demo.groups[0];
-
-
-      const token=
-        Math.random()
-          .toString(36)
-          .slice(2,10)
-          .toUpperCase();
-
-
-      demo.links.push({
-
-        group:
-          g
-            ? g.name
-            : "",
-
-        token:
-          token,
-
-        date:
-          new Date()
-            .toLocaleString(
-              "tr-TR"
-            )
-
-      });
-
-
-      renderLinks();
-
-    };
-
-}
-
-
-function renderLinks(){
-
-  const table=
-    $("linksTable");
-
-
-  if(!table){
-
-    return;
-
-  }
-
-
-  if(!demo.links.length){
-
-    table.innerHTML=
-      '<div class="empty">'+
-      'Başvuru linkleri links-vnext.js tarafından yönetilmektedir.'+
-      '</div>';
-
-    return;
-
-  }
-
-
-  table.innerHTML=
-    '<table class="table">'+
-    '<thead>'+
-    '<tr>'+
-    '<th>Grup</th>'+
-    '<th>Token</th>'+
-    '<th>Oluşturulma</th>'+
-    '<th>Durum</th>'+
-    '</tr>'+
-    '</thead>'+
-    '<tbody>'+
-
-    demo.links
-      .map(
-        x=>
-          `<tr>
-
-            <td>
-              ${esc(x.group)}
-            </td>
-
-            <td>
-              <code>
-                ${esc(x.token)}
-              </code>
-            </td>
-
-            <td>
-              ${esc(x.date)}
-            </td>
-
-            <td>
-              <span class="pill ok">
-                Aktif
-              </span>
-            </td>
-
-          </tr>`
-      )
-      .join("")+
-
-    '</tbody>'+
-    '</table>';
-
-}
 
 
 // ============================================================
